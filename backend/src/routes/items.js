@@ -1,42 +1,62 @@
 const express = require('express');
-const fs = require('fs');
+const fs = require('fs').promises;
 const path = require('path');
 const router = express.Router();
 const DATA_PATH = path.join(__dirname, '../../../data/items.json');
 
-// Utility to read data (intentionally sync to highlight blocking issue)
-function readData() {
-  const raw = fs.readFileSync(DATA_PATH);
-  return JSON.parse(raw);
+// Utility to read data (intentionally sync to highlight blocking issue) - fixed to async
+async function readData() {
+  try {
+    const raw = await fs.readFile(DATA_PATH, 'utf8');
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data)) {
+      throw new Error('Data file is not an array');
+    }
+    return data;
+  } catch (err) {
+    console.error('Failed to read data:', err.message);
+    if (err.code === 'ENOENT') {
+      throw new Error('Data file not found');
+    }
+    throw new Error('Unable to read data file');
+  }
 }
 
 // GET /api/items
-router.get('/', (req, res, next) => {
+router.get('/',async (req, res, next) => {
   try {
-    const data = readData();
-    const { limit, q } = req.query;
-    let results = data;
-
-    if (q) {
-      // Simple substring search (sub‑optimal)
-      results = results.filter(item => item.name.toLowerCase().includes(q.toLowerCase()));
+    const { q = '', limit = 10, page = 1 } = req.query;
+    const parsedLimit = parseInt(limit);
+    const parsedPage = parseInt(page);
+    if (isNaN(parsedLimit) || parsedLimit < 1 || isNaN(parsedPage) || parsedPage < 1) {
+      return res.status(400).json({ message: 'Invalid limit or page parameter' });
     }
-
-    if (limit) {
-      results = results.slice(0, parseInt(limit));
-    }
-
-    res.json(results);
+    const items = await readData();
+    
+    // Filter items by query
+    const filteredItems = q
+      ? items.filter(item => item.name.toLowerCase().includes(q.toLowerCase()))
+      : items;
+    
+    // Paginate
+    const start = (parsedPage - 1) * parsedLimit;
+    const paginatedItems = filteredItems.slice(start, start + parsedLimit);
+    
+    res.json(paginatedItems);
   } catch (err) {
     next(err);
   }
 });
 
 // GET /api/items/:id
-router.get('/:id', (req, res, next) => {
+router.get('/:id', async (req, res, next) => {
   try {
-    const data = readData();
-    const item = data.find(i => i.id === parseInt(req.params.id));
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return res.status(400).json({ message: 'Invalid item ID' });
+    }
+    const items = await readData();
+    const item = items.find(i => i.id === id);
     if (!item) {
       const err = new Error('Item not found');
       err.status = 404;
@@ -49,15 +69,25 @@ router.get('/:id', (req, res, next) => {
 });
 
 // POST /api/items
-router.post('/', (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
-    // TODO: Validate payload (intentional omission)
-    const item = req.body;
-    const data = readData();
-    item.id = Date.now();
-    data.push(item);
-    fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2));
-    res.status(201).json(item);
+    const { name, category, price } = req.body;
+    //Valiidate payload (intentional omission)
+    if (!name || !category || typeof price !== 'number' || price < 0) {
+      return res.status(400).json({
+        message: 'Invalid payload: name, category, and price (number, non-negative) are required',
+      });
+    }
+    const items = await readData();
+    const newItem = {
+      id: Date.now(),
+      name,
+      category,
+      price,
+    };
+    items.push(newItem);
+    await fs.writeFile(DATA_PATH, JSON.stringify(items, null, 2));
+    res.status(201).json(newItem);
   } catch (err) {
     next(err);
   }
