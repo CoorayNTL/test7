@@ -25,7 +25,7 @@ async function readData() {
 // GET /api/items
 router.get('/',async (req, res, next) => {
   try {
-    const { q = '', limit = 10, page = 1 } = req.query;
+    const { q = '', limit = 10, page = 1 } = req.query; //Server-Side Contribution
     const parsedLimit = parseInt(limit);
     const parsedPage = parseInt(page);
     if (isNaN(parsedLimit) || parsedLimit < 1 || isNaN(parsedPage) || parsedPage < 1) {
