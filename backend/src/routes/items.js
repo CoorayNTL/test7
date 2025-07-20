@@ -4,7 +4,7 @@ const path = require('path');
 const router = express.Router();
 const DATA_PATH = path.join(__dirname, '../../../data/items.json');
 
-// Utility to read data (intentionally sync to highlight blocking issue) - fixed to async
+// Utility to read data (intentionally sync to highlight blocking issue) - Used async/await for clean, non-blocking file operations.
 async function readData() {
   try {
     const raw = await fs.readFile(DATA_PATH, 'utf8');
